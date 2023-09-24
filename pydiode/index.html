@@ -1,0 +1,179 @@
+<!doctype html>
+<html>
+  <head>
+      <script src="https://cdn.jsdelivr.net/pyodide/v0.24.0/full/pyodide.js"></script>
+      <style>
+      body {
+        background-color: #003366;
+        color: #ffffff;
+        font-family: Arial, sans-serif;
+      }
+      h1 {
+        margin-bottom: 20px;
+      }
+      button {
+        background-color: #00509E;
+        color: #ffffff;
+        border: none;
+        padding: 10px 20px;
+        margin-top: 10px;
+        cursor: pointer;
+      }
+      button:hover {
+        background-color: #0066cc;
+      }
+      img {
+        border: 10px;
+        padding 10px 20px;
+      }
+      #container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <h1> Image Converter </h1>
+      <input type="file" id="imageInput" onchange="processImage()">
+      <img id="inputImage" width="600"/>
+      <button onclick="processImage()">Process Image</button>
+      <img id="outputImage" width="600"/>
+      <button id="downloadButton" onclick="downloadImage()">Download Image</button>
+    </div>
+
+    <script type="text/javascript">
+      let pyodide = null;
+      let file = null;
+      let base64Output = null;
+      async function main() {
+        pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.0/full/' });
+        await pyodide.loadPackage("pillow");
+      }
+      main();
+
+      async function processImage(){
+        base64Output = null;
+        const inputElement = document.getElementById('imageInput');
+        file = inputElement.files[0];
+        const reader = new FileReader();
+        reader.onload = async function() {
+
+          const base64String = reader.result.replace(/^data:.+;base64,/, '');
+
+          // Display the original image
+          const inputImage = document.getElementById('inputImage');
+          inputImage.src = 'data:image/jpeg;base64,' + base64String;
+
+          const convert_script = `
+#encoding: utf-8
+from PIL import Image, ImagePalette, ImageOps
+
+
+from io import BytesIO
+import base64
+img_data = base64.b64decode("${base64String}")
+
+# Add orientation parameter
+#parser.add_argument('image_file', type=str, help='Input image file')
+#parser.add_argument('--dir', choices=['landscape', 'portrait'], help='Image direction (landscape or portrait)')
+#parser.add_argument('--mode', choices=['scale', 'cut'], default='scale', help='Image conversion mode (scale or cut)')
+
+# Get input parameter
+display_direction = 'landscape'
+display_mode = 'scale'
+display_dither = Image.FLOYDSTEINBERG;
+
+# Read input image
+input_image = Image.open(BytesIO(img_data))
+
+# Get the original image size
+width, height = input_image.size
+
+# Specified target size
+if display_direction:
+    if display_direction == 'landscape':
+        target_width, target_height = 800, 480
+    else:
+        target_width, target_height = 480, 800
+else:
+    if  width > height:
+        target_width, target_height = 800, 480
+    else:
+        target_width, target_height = 480, 800
+    
+if display_mode == 'scale':
+    # Computed scaling
+    scale_ratio = max(target_width / width, target_height / height)
+
+    # Calculate the size after scaling
+    resized_width = int(width * scale_ratio)
+    resized_height = int(height * scale_ratio)
+
+    # Resize image
+    output_image = input_image.resize((resized_width, resized_height))
+
+    # Create the target image and center the resized image
+    resized_image = Image.new('RGB', (target_width, target_height), (255, 255, 255))
+    left = (target_width - resized_width) // 2
+    top = (target_height - resized_height) // 2
+    resized_image.paste(output_image, (left, top))
+elif display_mode == 'cut':
+    # Calculate the fill size to add or the area to crop
+    if width / height >= target_width / target_height:
+        # The image aspect ratio is larger than the target aspect ratio, and padding needs to be added on the left and right
+        delta_width = int(height * target_width / target_height - width)
+        padding = (delta_width // 2, 0, delta_width - delta_width // 2, 0)
+        box = (0, 0, width, height)
+    else:
+        # The image aspect ratio is smaller than the target aspect ratio and needs to be filled up and down
+        delta_height = int(width * target_height / target_width - height)
+        padding = (0, delta_height // 2, 0, delta_height - delta_height // 2)
+        box = (0, 0, width, height)
+
+    resized_image = ImageOps.pad(input_image.crop(box), size=(target_width, target_height), color=(255, 255, 255), centering=(0.5, 0.5))
+
+
+# Create a palette object
+pal_image = Image.new("P", (1,1))
+pal_image.putpalette( (0,0,0,  255,255,255,  0,255,0,   0,0,255,  255,0,0,  255,255,0, 255,128,0) + (0,0,0)*249)
+  
+# The color quantization and dithering algorithms are performed, and the results are converted to RGB mode
+quantized_image = resized_image.quantize(dither=display_dither, palette=pal_image).convert('RGB')
+
+# Save output image
+#output_filename = os.path.splitext(input_filename)[0] + '_' + display_mode + '_output.bmp'
+
+#print(f'Successfully converted {input_filename} to {output_filename}')
+
+buffered = BytesIO()
+quantized_image.save(buffered, format="JPEG")
+img_str = base64.b64encode(buffered.getvalue()).decode()
+img_str
+        `
+          base64Output = pyodide.runPython(convert_script);
+          const outputImage = document.getElementById('outputImage');
+          outputImage.src = 'data:image/jpeg;base64,' + base64Output;
+        }
+        reader.readAsDataURL(file);
+      }
+
+      function downloadImage() {
+        if (!base64Output) {
+          alert("No image to download.");
+          return;
+        }
+
+        const link = document.createElement('a');
+
+        out_name = file.name.split('.').slice(0,-1).join('.') + '_processed.jpeg';
+        link.setAttribute('href', 'data:image/jpeg;base64,' + base64Output);
+        link.setAttribute('download', out_name);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    </script>
+  </body>
+</html>
