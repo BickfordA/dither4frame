@@ -1,39 +1,58 @@
 <!doctype html>
 <html>
   <head>
-      <script src="https://cdn.jsdelivr.net/pyodide/v0.24.0/full/pyodide.js"></script>
+      <script src="./pyodide.js"></script>
       <style>
-      body {
-        background-color: #003366;
-        color: #ffffff;
-        font-family: Arial, sans-serif;
-      }
-      h1 {
-        margin-bottom: 20px;
-      }
-      button {
-        background-color: #00509E;
-        color: #ffffff;
-        border: none;
-        padding: 10px 20px;
-        margin-top: 10px;
-        cursor: pointer;
-      }
-      button:hover {
-        background-color: #0066cc;
-      }
-      img {
-        border: 10px;
-        padding 10px 20px;
-      }
-      #container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-      }
-    </style>
+        body {
+          background-color: #003366;
+          color: #ffffff;
+          font-family: Arial, sans-serif;
+        }
+        h1 {
+          margin-bottom: 20px;
+        }
+        button {
+          background-color: #00509E;
+          color: #ffffff;
+          border: none;
+          padding: 10px 20px;
+          margin-top: 10px;
+          cursor: pointer;
+        }
+        button:hover {
+          background-color: #0066cc;
+        }
+        img {
+          border: 10px;
+          padding 10px 20px;
+        }
+        #container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+              /* Style for loading screen */
+        #loading {
+          position: fixed;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          width: 100%;
+          height: 100%;
+          background-color: rgba(0, 0, 0, 0.7);
+          z-index: 1000;
+        }
+        #progressBar {
+          width: 0;
+          height: 30px;
+          background-color: #00cc66;
+        }
+      </style>
   </head>
   <body>
+    <div>
+      <div id="progressBar"></div>
+    </div>
     <div id="container">
       <h1> Image Converter </h1>
       <input type="file" id="imageInput" onchange="processImage()">
@@ -44,13 +63,25 @@
     </div>
 
     <script type="text/javascript">
+
       let pyodide = null;
+      async function main() {
+        pyodide = await loadPyodide({
+          indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.0/full/',
+          progressCallback: (progress) => {
+            document.getElementById('progressBar').style.width = `${progress * 100}%`;
+          }
+        });
+
+        await pyodide.loadPackage("pillow");
+ 
+        // Hide loading screen when done
+        document.getElementById('loading').style.display = 'none';
+      }
+
       let file = null;
       let base64Output = null;
-      async function main() {
-        pyodide = await loadPyodide({ indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.24.0/full/' });
-        await pyodide.loadPackage("pillow");
-      }
+
       main();
 
       async function processImage(){
